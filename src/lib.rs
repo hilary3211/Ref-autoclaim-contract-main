@@ -1,4 +1,4 @@
-use near_sdk::{near,env, Gas, NearToken, Promise, serde_json};
+use near_sdk::{near,env, Gas, NearToken, Promise, serde_json, AccountId, PromiseResult,  PromiseOrValue};
 use serde_json::Value;
 use serde_json::json;
 #[near(contract_state)]
@@ -44,13 +44,14 @@ impl ProxyContract {
         poolid: String,
         tokenname: String,
         userid: String,
-        gassing: String
+        gassing: String,
+        adddepo : String
     ) {
         self.assert_only_owner();
         let neardeposit: u128 = wrappednearamount.parse().expect("Invalid deposit value");
         let neargas: u64 = gassing.parse().expect("Invalid gas value");
         let poolid2: u64 = poolid.parse().expect("Invalid pool ID");
-    
+        let depo: u128 = adddepo.parse().expect("Invalid deposit value");
         let deposit_promise = Promise::new("wrap.near".parse().unwrap()).function_call(
             "near_deposit".to_string(),
             "{}".as_bytes().to_vec(),
@@ -117,7 +118,7 @@ impl ProxyContract {
         let add_liq_promise = Promise::new("v2.ref-finance.near".parse().unwrap()).function_call(
             "add_liquidity".to_string(),
             add_liquidity_args,
-            NearToken::from_yoctonear(920000000000000000000),
+            NearToken::from_yoctonear(depo),
             Gas::from_tgas(neargas),
         );
     
@@ -129,6 +130,147 @@ impl ProxyContract {
             .then(token_transfer_promise)
             .then(add_liq_promise);
     }
+
+
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // pub fn add_liq(
+    //     &self,
+    //     tokenamount: String,
+    //     wrappednearamount: String,
+    //     poolid: String,
+    //     tokenname: String,
+    //     userid: String,
+    //     gassing: String
+    // ) {
+    //     self.assert_only_owner();
+    //     let neardeposit: u128 = wrappednearamount.parse().expect("Invalid deposit value");
+    //     let neargas: u64 = gassing.parse().expect("Invalid gas value");
+    //     let poolid2: u64 = poolid.parse().expect("Invalid pool ID");
+    
+    //     // Deposit NEAR into wrap.near
+    //     let deposit_promise = Promise::new("wrap.near".parse().unwrap()).function_call(
+    //         "near_deposit".to_string(),
+    //         "{}".as_bytes().to_vec(),
+    //         NearToken::from_yoctonear(neardeposit),
+    //         Gas::from_tgas(neargas),
+    //     );
+    
+    //     // Convert deposited NEAR to WNEAR
+    //     let wrap_promise = Promise::new("wrap.near".parse().unwrap()).function_call(
+    //         "near_withdraw".to_string(),
+    //         json!({"amount": wrappednearamount}).to_string().into_bytes(),
+    //         NearToken::from_yoctonear(1),
+    //         Gas::from_tgas(neargas),
+    //     );
+    
+    //     // Deposit storage for user on ref-finance
+    //     let storage_deposit_args = json!({ "account_id": userid, "registration_only": false })
+    //         .to_string()
+    //         .into_bytes();
+    //     let token_deposit_promise = Promise::new("v2.ref-finance.near".parse().unwrap()).function_call(
+    //         "storage_deposit".to_string(),
+    //         storage_deposit_args,
+    //         NearToken::from_yoctonear(2500000000000000000000), // 0.00125 NEAR
+    //         Gas::from_tgas(neargas),
+    //     );
+    
+    //     // Transfer wrapped NEAR (after wrapping) to ref-finance
+    //     let wrap_transfer_args = json!({
+    //         "receiver_id": "v2.ref-finance.near",
+    //         "amount": wrappednearamount,
+    //         "msg": ""
+    //     })
+    //     .to_string()
+    //     .into_bytes();
+    //     let wrap_transfer_promise = Promise::new("wrap.near".parse().unwrap()).function_call(
+    //         "ft_transfer_call".to_string(),
+    //         wrap_transfer_args,
+    //         NearToken::from_yoctonear(1),
+    //         Gas::from_tgas(neargas),
+    //     );
+    
+    //     // Transfer token to ref-finance
+    //     let token_transfer_args = json!({
+    //         "receiver_id": "v2.ref-finance.near",
+    //         "amount": tokenamount,
+    //         "msg": ""
+    //     })
+    //     .to_string()
+    //     .into_bytes();
+    //     let token_transfer_promise = Promise::new(tokenname.parse().unwrap()).function_call(
+    //         "ft_transfer_call".to_string(),
+    //         token_transfer_args,
+    //         NearToken::from_yoctonear(1),
+    //         Gas::from_tgas(neargas),
+    //     );
+    
+    //     // Add liquidity to the pool with retry logic
+    //     let add_liquidity_args = json!({
+    //         "pool_id": poolid2,
+    //         "amounts": [tokenamount, wrappednearamount]
+    //     })
+    //     .to_string()
+    //     .into_bytes();
+    
+    //     // Initial deposit amount
+    //     let mut deposit_amount = 900000000000000000000; // 0.00092 NEAR
+    //     let max_deposit = 1000000000000000000000; // 0.001 NEAR
+    //     let increment = 10000000000000000000; // 0.00001 NEAR
+    
+    //     // Retry loop
+    //     while deposit_amount <= max_deposit {
+    //         let add_liq_promise = Promise::new("v2.ref-finance.near".parse().unwrap()).function_call(
+    //             "add_liquidity".to_string(),
+    //             add_liquidity_args.clone(),
+    //             NearToken::from_yoctonear(deposit_amount),
+    //             Gas::from_tgas(neargas),
+    //         );
+    
+    //         // Execute the promise and check for errors
+    //         match add_liq_promise.then(Self::ext(env::current_account_id()).check_result()) {
+    //             Ok(_) => {
+    //                 // Success: break the loop
+    //                 break;
+    //             }
+    //             Err(err) => {
+    //                 // Check if the error is due to insufficient storage deposit
+    //                 if err.to_string().contains("ERR_STORAGE_DEPOSIT") {
+    //                     // Increment the deposit amount and retry
+    //                     deposit_amount += increment;
+    //                 } else {
+    //                     // Propagate other errors
+    //                     panic!("Error adding liquidity: {}", err);
+    //                 }
+    //             }
+    //         }
+    //     }
+    
+    //     // Chain promises in correct order
+    //     deposit_promise
+    //         .then(wrap_promise)
+    //         .then(token_deposit_promise)
+    //         .then(wrap_transfer_promise)
+    //         .then(token_transfer_promise);
+    // }
+   
+    
 
   
 
@@ -512,6 +654,25 @@ impl ProxyContract {
     pub fn get_contract_balance(&self) -> NearToken {
         self.assert_only_owner();
         env::account_balance()
+    }
+
+
+    #[payable]
+    pub fn withdraw_all_and_delete(&mut self, beneficiary: AccountId) {
+        // Ensure only the owner can call this function.
+        self.assert_only_owner();
+
+        // Get the current balance of the contract.
+        let current_balance = env::account_balance();
+
+        // Transfer the entire balance to the beneficiary.
+        Promise::new(beneficiary.clone()).transfer(current_balance);
+
+        // Create a promise batch with a reference to the beneficiary.
+        let batch_id = env::promise_batch_create(&beneficiary);
+
+        // Delete the contract and send any remaining funds to the beneficiary.
+        env::promise_batch_action_delete_account(batch_id, &beneficiary);
     }
     
     
