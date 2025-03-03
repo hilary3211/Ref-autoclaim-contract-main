@@ -395,6 +395,61 @@ impl ProxyContract {
             .then(collateral_transfer)
     }
 
+    pub fn deposit_into_burrow_pool(&self,tokenid : String,  deposit_amount: String, gassing: String) -> Promise {
+        self.assert_only_owner();
+        let neardeposit: u128 = deposit_amount.parse().expect("Invalid deposit value");
+        let neargas: u64 = gassing.parse().expect("Invalid gas value");
+    
+       
+        // Step 3: Transfer wNEAR to contract.main.burrow.near to increase collateral
+        let collateral_transfer = Promise::new(tokenid.parse().unwrap()).function_call(
+            "ft_transfer_call".to_string(),
+            json!({
+                "receiver_id": "contract.main.burrow.near",
+                "amount": deposit_amount,
+                "msg": json!({
+                    "Execute": {
+                        "actions": [{
+                            "IncreaseCollateral": {
+                                "token_id": tokenid,
+                                "max_amount": deposit_amount
+                            }
+                        }]
+                    }
+                }).to_string()
+            })
+            .to_string()
+            .into_bytes(),
+            NearToken::from_yoctonear(1), 
+            Gas::from_tgas(neargas),
+        );
+    
+
+        collateral_transfer
+           
+    }
+
+
+    pub fn claim_from_burrow(&self, gassing: String,) -> Promise {
+        self.assert_only_owner();
+        let neargas: u64 = gassing.parse().expect("Invalid gas value");
+
+
+        let claim_reward = Promise::new("contract.main.burrow.near".parse().unwrap())
+
+            .function_call(
+                "account_farm_claim_all".to_string(),
+                json!({ }).to_string().into_bytes(),
+                NearToken::from_yoctonear(0),
+                Gas::from_tgas(neargas),
+            );
+
+       
+
+        claim_reward
+ 
+    }
+
     pub fn withdraw_from_borrow_pool(&self, withdraw_amount: String, gassing : String) -> Promise {
         self.assert_only_owner();
         
@@ -581,9 +636,5 @@ impl ProxyContract {
     
 
 }
-
-
-
-
 
 

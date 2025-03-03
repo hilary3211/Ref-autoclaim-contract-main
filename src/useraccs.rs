@@ -19,7 +19,7 @@ pub struct Preference {
     pub token_id: String,
     pub smart_contract_name: String,
     pub is_active: String,
-    pub reinvest_to : String
+    pub reinvest_to: String,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, JsonSchema, Clone)]
@@ -41,12 +41,11 @@ impl Default for Contract {
 
 #[near_bindgen]
 impl Contract {
-
     pub fn store_user(&mut self, username: String, subaccount_id: String) {
         let wallet_id = env::signer_account_id();
         let new_user = User {
             username,
-            wallet_id: wallet_id.to_string(),  
+            wallet_id: wallet_id.to_string(),
             subaccount_id,
             preferences: Vec::new(),
         };
@@ -54,19 +53,20 @@ impl Contract {
         self.users.insert(&wallet_id, &new_user);
     }
 
-
     pub fn get_user(&self, wallet_id: AccountId) -> Option<User> {
         self.users.get(&wallet_id)
     }
 
-   
     pub fn update_preferences(&mut self, prefs: Vec<Preference>) {
         let signer = env::signer_account_id();
         let mut user = self.users.get(&signer).expect("User not found");
-       
+
         assert_eq!(user.wallet_id, signer.to_string(), "Unauthorized: wallet mismatch");
 
-        user.preferences = prefs;
+        // Append the new preferences to the existing preferences
+        user.preferences.extend(prefs);
+
+        // Update the user in the contract state
         self.users.insert(&signer, &user);
     }
 
@@ -74,3 +74,9 @@ impl Contract {
         self.users.to_vec().into_iter().map(|(_key, value)| value).collect()
     }
 }
+
+
+
+
+
+
