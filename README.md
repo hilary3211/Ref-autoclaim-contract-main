@@ -1,6 +1,62 @@
-# autoclaim
+#  Ref Finance auto-claim  smart contract
 
-cargo-near-new-project-description
+This is a NEAR Protocol smart contract that enables users stake, auto claim and compound rewards. The contract is written in Rust and deployed on the NEAR blockchain.
+
+
+## Features
+- Create and manage Subaccounts 
+
+- Stake Tokens: Users can stake tokens to earn rewards.
+
+- Claim Rewards: Users can claim their staking rewards.
+
+- View Data: Users can query their staked balance and rewards.
+
+- Withdraw rewards
+
+
+
+## Technologies Used
+- Rust: The programming language used to write the smart contract.
+
+- NEAR SDK: For interacting with the NEAR blockchain.
+
+- NEAR Mainnet: The contract is deployed on the NEAR Mainnet for testing.
+
+
+## Contract ID
+```
+auto-claim-main2.near
+```
+
+```
+[userid].auto-claim-main2.near
+```
+
+# Contract ID
+
+### lib.rs
+This contract is deployed into sub-accounts created by users. It enables users to:
+
+- Stake tokens: Users can stake their tokens in supported pools.
+
+- Deposit into Burrow: Users can deposit tokens into Burrow for lending/borrowing.
+
+- Manage tokens: Users can manage their token balances and transactions efficiently.
+
+
+
+### useraccs.rs
+This is the main contract that serves as the central hub for the platform. It is responsible for:
+
+- Tracking users: Maintains a record of all users and their activities on the platform.
+
+- Compounding rewards: Automatically compounds rewards earned by users.
+
+- Reinvesting rewards: Reinvests the claimed rewards into the appropriate pools or strategies.
+
+
+
 
 ## How to Build Locally?
 
@@ -15,6 +71,7 @@ cargo near build
 ```bash
 cargo test
 ```
+
 
 ## How to Deploy?
 
