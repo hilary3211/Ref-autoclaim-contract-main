@@ -10,40 +10,37 @@ pub struct ProxyContract {}
 #[near]
 impl ProxyContract {
 
+
+
     fn assert_only_owner(&self) {
-
         let contract_id = env::current_account_id().to_string();
+        let signer_id = env::predecessor_account_id().to_string();
     
-
-        let signer_id = env::signer_account_id().to_string();
     
-
         if signer_id == contract_id {
             return;
         }
     
-
-        let main_id = "auto-claim-main.near".to_string();
+        let main_id = "auto-claim-main2.near".to_string();
         if signer_id == main_id {
             return;
         }
     
-       
-        let contract_parts: Vec<&str> = contract_id.split('.').collect();
-        if contract_parts.len() < 2 {
-            env::panic_str("Invalid contract ID format");
+        
+        let main_suffix = ".auto-claim-main2.near";
+        if !contract_id.ends_with(main_suffix) {
+            env::panic_str("Invalid contract ID: must end with .auto-claim-main2.near");
         }
     
-
-        let subaccount_name = contract_parts[0];
+        let subaccount_name = contract_id.strip_suffix(main_suffix).unwrap_or_else(|| {
+            env::panic_str("Failed to extract subaccount name");
+        });
     
-
+       
         let owner_id = if subaccount_name.len() == 64 && subaccount_name.chars().all(|c| c.is_ascii_hexdigit()) {
-           
-            subaccount_name.to_string()
+            subaccount_name.to_string() 
         } else {
-            
-            format!("{}.near", subaccount_name)
+            subaccount_name.replace("-", ".") 
         };
     
        
@@ -55,99 +52,6 @@ impl ProxyContract {
         );
     }
 
-    pub fn add_liq(
-        &self,
-        tokenamount: String,
-        wrappednearamount: String,
-        poolid: String,
-        tokenname: String,
-        userid: String,
-        gassing: String,
-        adddepo : String
-    ) {
-        self.assert_only_owner();
-        let neardeposit: u128 = wrappednearamount.parse().expect("Invalid deposit value");
-        let neargas: u64 = gassing.parse().expect("Invalid gas value");
-        let poolid2: u64 = poolid.parse().expect("Invalid pool ID");
-        let depo: u128 = adddepo.parse().expect("Invalid deposit value");
-        let deposit_promise = Promise::new("wrap.near".parse().unwrap()).function_call(
-            "near_deposit".to_string(),
-            "{}".as_bytes().to_vec(),
-            NearToken::from_yoctonear(neardeposit),
-            Gas::from_tgas(neargas),
-        );
-    
-        // Convert deposited NEAR to WNEAR
-        let wrap_promise = Promise::new("wrap.near".parse().unwrap()).function_call(
-            "near_withdraw".to_string(),
-            json!({"amount": wrappednearamount}).to_string().into_bytes(),
-            NearToken::from_yoctonear(1),
-            Gas::from_tgas(neargas),
-        );
-    
-        // Deposit storage for user on ref-finance
-        let storage_deposit_args = json!({ "account_id": userid, "registration_only": false })
-            .to_string()
-            .into_bytes();
-        let token_deposit_promise = Promise::new("v2.ref-finance.near".parse().unwrap()).function_call(
-            "storage_deposit".to_string(),
-            storage_deposit_args,
-            NearToken::from_yoctonear(1250000000000000000000),
-            Gas::from_tgas(neargas),
-        );
-    
-        // Transfer wrapped NEAR (after wrapping) to ref-finance
-        let wrap_transfer_args = json!({
-            "receiver_id": "v2.ref-finance.near",
-            "amount": wrappednearamount,
-            "msg": ""
-        })
-        .to_string()
-        .into_bytes();
-        let wrap_transfer_promise = Promise::new("wrap.near".parse().unwrap()).function_call(
-            "ft_transfer_call".to_string(),
-            wrap_transfer_args,
-            NearToken::from_yoctonear(1),
-            Gas::from_tgas(neargas),
-        );
-    
-        // Transfer token to ref-finance
-        let token_transfer_args = json!({
-            "receiver_id": "v2.ref-finance.near",
-            "amount": tokenamount,
-            "msg": ""
-        })
-        .to_string()
-        .into_bytes();
-        let token_transfer_promise = Promise::new(tokenname.parse().unwrap()).function_call(
-            "ft_transfer_call".to_string(),
-            token_transfer_args,
-            NearToken::from_yoctonear(1),
-            Gas::from_tgas(neargas),
-        );
-    
-        // Add liquidity to the pool
-        let add_liquidity_args = json!({
-            "pool_id": poolid2,
-            "amounts": [tokenamount, wrappednearamount]
-        })
-        .to_string()
-        .into_bytes();
-        let add_liq_promise = Promise::new("v2.ref-finance.near".parse().unwrap()).function_call(
-            "add_liquidity".to_string(),
-            add_liquidity_args,
-            NearToken::from_yoctonear(depo),
-            Gas::from_tgas(neargas),
-        );
-    
-        // Chain promises in correct order
-        deposit_promise
-            .then(wrap_promise)
-            .then(token_deposit_promise)
-            .then(wrap_transfer_promise)
-            .then(token_transfer_promise)
-            .then(add_liq_promise);
-    }
 
 
 
@@ -155,27 +59,13 @@ impl ProxyContract {
 
     
 
-
-
-
-
-
-
-
-
-
-  
-
-    
-
-    pub fn stake_lp_tokens(&self, pool_id: String, lp_token_amount: String, gassing: String,useracc : String ) -> Promise {
+    pub fn stake_lp_tokens(&self, pool_id: String, lp_token_amount: String, neargas: u64,useracc : String ) -> Promise {
    
 
-        self.assert_only_owner();
+        // self.assert_only_owner();
 
         let boostfarm = "boostfarm.ref-labs.near".to_string();
-        let neargas: u64 = gassing.parse().expect("Invalid gas value");
-    
+      
         
         let storage_deposit_promise = Promise::new("v2.ref-finance.near".parse().unwrap()).function_call(
             "storage_deposit".parse().unwrap(),
@@ -221,9 +111,9 @@ impl ProxyContract {
     }
 
 
-    pub fn unstake_lp(&self, seed_id: String, withdraw_amount: String, gassing: String, tokenname : String) -> Promise {
+    pub fn unstake_lp(&self, seed_id: String, withdraw_amount: String, neargas: u64, tokenname : String) -> Promise {
         self.assert_only_owner();
-        let neargas: u64 = gassing.parse().expect("Invalid gas value");
+        // let neargas: u64 = gassing.parse().expect("Invalid gas value");
         let unlock_and_withdraw_seed = Promise::new("boostfarm.ref-labs.near".parse().unwrap()).function_call(
             "unlock_and_withdraw_seed".to_string(),
             json!({
@@ -254,9 +144,9 @@ impl ProxyContract {
     }
 
 
-    pub fn claim_all_rewards(&self, seed_id: String, gassing: String, tokenid : String) -> Promise {
-        self.assert_only_owner();
-        let neargas: u64 = gassing.parse().expect("Invalid gas value");
+    pub fn claim_all_rewards(&self, seed_id: String, neargas: u64, tokenid : String) -> Promise {
+        //self.assert_only_owner();
+        // let neargas: u64 = gassing.parse().expect("Invalid gas value");
 
 
         let claim_reward = Promise::new("boostfarm.ref-labs.near".parse().unwrap())
@@ -281,6 +171,9 @@ impl ProxyContract {
  
     }
 
+
+
+
     pub fn remove_liquidity_and_withdraw_tokens(
         &self,
         pool_id: u64,
@@ -289,11 +182,11 @@ impl ProxyContract {
         wrappednearamount: String,
         tokenname: String,
         tokenname2: String,
-        gassing : String
+        neargas: u64
     ) -> Promise {
 
         self.assert_only_owner();
-        let neargas: u64 = gassing.parse().expect("Invalid gas value");
+        // let neargas: u64 = gassing.parse().expect("Invalid gas value");
         let remove_liquidity = Promise::new("v2.ref-finance.near".parse().unwrap())
             .function_call(
                 "remove_liquidity".to_string(),
@@ -345,12 +238,10 @@ impl ProxyContract {
 
 
 
-    pub fn deposit_into_burrow(&self, deposit_amount: String, gassing: String) -> Promise {
-        self.assert_only_owner();
+    pub fn deposit_into_burrow(&self, deposit_amount: String, neargas: u64) -> Promise {
+        // self.assert_only_owner();
         let neardeposit: u128 = deposit_amount.parse().expect("Invalid deposit value");
-        let neargas: u64 = gassing.parse().expect("Invalid gas value");
-    
-        // Step 1: Register the account with contract.main.burrow.near (if not already registered)
+       
         let storage_deposit_promise = Promise::new("contract.main.burrow.near".parse().unwrap()).function_call(
             "storage_deposit".to_string(),
             "{}".to_string().into_bytes(),
@@ -395,10 +286,10 @@ impl ProxyContract {
             .then(collateral_transfer)
     }
 
-    pub fn deposit_into_burrow_pool(&self,tokenid : String,  deposit_amount: String, gassing: String) -> Promise {
-        self.assert_only_owner();
+    pub fn deposit_into_burrow_pool(&self,tokenid : String,  deposit_amount: String, neargas: u64) -> Promise {
+        // self.assert_only_owner();
         let neardeposit: u128 = deposit_amount.parse().expect("Invalid deposit value");
-        let neargas: u64 = gassing.parse().expect("Invalid gas value");
+        // let neargas: u64 = gassing.parse().expect("Invalid gas value");
     
        
         // Step 3: Transfer wNEAR to contract.main.burrow.near to increase collateral
@@ -430,9 +321,9 @@ impl ProxyContract {
     }
 
 
-    pub fn claim_from_burrow(&self, gassing: String,) -> Promise {
-        self.assert_only_owner();
-        let neargas: u64 = gassing.parse().expect("Invalid gas value");
+    pub fn claim_from_burrow(&self, neargas: u64) -> Promise {
+        // self.assert_only_owner();
+        // let neargas: u64 = gassing.parse().expect("Invalid gas value");
 
 
         let claim_reward = Promise::new("contract.main.burrow.near".parse().unwrap())
@@ -450,10 +341,10 @@ impl ProxyContract {
  
     }
 
-    pub fn withdraw_from_borrow_pool(&self, withdraw_amount: String, gassing : String) -> Promise {
+    pub fn withdraw_from_borrow_pool(&self, withdraw_amount: String, neargas: u64) -> Promise {
         self.assert_only_owner();
         
-        let neargas: u64 = gassing.parse().expect("Invalid gas value");
+        // let neargas: u64 = gassing.parse().expect("Invalid gas value");
         let payload = near_sdk::serde_json::json!({
             "receiver_id": "contract.main.burrow.near",
             "msg": near_sdk::serde_json::json!({
@@ -486,10 +377,10 @@ impl ProxyContract {
 
 
 
-    pub fn stake_xRef(&self, smart_contract_name: String, transfer_call_args: String, deposit_amount : String , gassing : String, receiver_id : String, min_amount_out : String, pool_id: String ) {
-        self.assert_only_owner();
+    pub fn stake_xRef(&self, smart_contract_name: String,  deposit_amount : String , neargas: u64, receiver_id : String, min_amount_out : String, pool_id: String ) {
+        // self.assert_only_owner();
        
-        let neargas: u64 = gassing.parse().expect("Invalid gas value");
+        // let neargas: u64 = gassing.parse().expect("Invalid gas value");
         let neardeposit: u128 = deposit_amount.parse().expect("Invalid deposit value");
 
         let transfer_args = json!({
@@ -581,9 +472,9 @@ impl ProxyContract {
         token_id: String,
         receiver_id: String,
         amount: String,
-        gassing: String,
+        neargas: u64,
     ) -> Promise {
-        let neargas: u64 = gassing.parse().expect("Invalid gas value");
+        // let neargas: u64 = gassing.parse().expect("Invalid gas value");
         self.assert_only_owner();
         // Transfer the token to the receiver
         Promise::new(token_id.parse().unwrap()).function_call(
@@ -606,10 +497,10 @@ impl ProxyContract {
     }
 
     #[payable]
-    pub fn withdraw_amount(&mut self, beneficiary: AccountId, wamount: String) {
+    pub fn withdraw_amount(&mut self, beneficiary: AccountId, amount: u128) {
        
         self.assert_only_owner();
-        let amount: u128 = wamount.parse().expect("Invalid deposit value");
+        // let amount: u128 = wamount.parse().expect("Invalid deposit value");
 
 
         let current_balance = env::account_balance();
@@ -625,16 +516,38 @@ impl ProxyContract {
     }
 
 
-    pub fn checkif(&mut self) {
-        // Ensure only the owner can call this function.
-        self.assert_only_owner();
-       
-    }
+    
 
+
+ 
 
     
     
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
