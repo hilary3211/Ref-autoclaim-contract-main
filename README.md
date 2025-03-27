@@ -29,24 +29,11 @@ This is a NEAR Protocol smart contract that enables users stake, auto claim and 
 auto-claim-main2.near
 ```
 
-```
-[userid].auto-claim-main2.near
-```
+
 
 # Contract ID
 
 ### lib.rs
-This contract is deployed into sub-accounts created by users. It enables users to:
-
-- Stake tokens: Users can stake their tokens in supported pools.
-
-- Deposit into Burrow: Users can deposit tokens into Burrow for lending/borrowing.
-
-- Manage tokens: Users can manage their token balances and transactions efficiently.
-
-
-
-### useraccs.rs
 This is the main contract that serves as the central hub for the platform. It is responsible for:
 
 - Tracking users: Maintains a record of all users and their activities on the platform.
@@ -54,6 +41,10 @@ This is the main contract that serves as the central hub for the platform. It is
 - Compounding rewards: Automatically compounds rewards earned by users.
 
 - Reinvesting rewards: Reinvests the claimed rewards into the appropriate pools or strategies.
+
+
+
+
 
 
 
