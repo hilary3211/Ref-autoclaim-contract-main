@@ -2,7 +2,9 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::{env, log, near_bindgen, AccountId};
 use near_sdk::collections::UnorderedMap; 
 use near_sdk::serde::{Deserialize, Serialize};
-use schemars::JsonSchema;
+
+// Removed schemars::JsonSchema since AccountId doesn’t implement it natively
+// If JSON schema is critical, we’d need a custom implementation or revert to String
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -10,22 +12,32 @@ pub struct Contract {
     users: UnorderedMap<AccountId, User>,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, JsonSchema, Clone)]
+/// An enum to represent the possible reinvestment options for a preference.
+/// Variants:
+/// - Burrow: Indicates reinvestment into the Burrow platform,
+/// - Stake: Indicates reinvestment into staking (e.g., Ref Finance).
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
+pub enum ReinvestOption {
+    Burrow,
+    Stake,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Preference {
     pub seed_id: String,
-    pub token_id: String,
-    pub smart_contract_name: String,
+    pub token_id: AccountId,             
+    pub smart_contract_name: AccountId,   
     pub is_active: bool,
-    pub reinvest_to: String,
+    pub reinvest_to: ReinvestOption,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, JsonSchema, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct User {
-    pub username: String,
-    pub wallet_id: String,
-    pub subaccount_id: String,
+    pub wallet_id: AccountId,             
+    pub subaccount_id: AccountId,       
     pub preferences: Vec<Preference>,
 }
 
@@ -47,22 +59,21 @@ impl Contract {
     /// A method to store a new user in the contract’s users map.
     /// You must supply:
     /// - username: The String representing the user’s name,
-    /// - subaccount_id: The String representing the user’s subaccount ID.
+    /// - subaccount_id: The AccountId representing the user’s subaccount ID.
     /// This function:
     /// - Uses the caller’s account ID (predecessor_account_id) as the wallet_id,
     /// - Creates a new User struct with the provided username, wallet_id, subaccount_id, and an empty preferences vector,
     /// - Inserts the user into the users map,
     /// - Logs the storage action,
     /// - Returns nothing (implicitly updates the contract state).
-    pub fn store_user(&mut self, username: String, subaccount_id: String) {
+    pub fn store_user(&mut self, subaccount_id: AccountId) {
         let wallet_id = env::predecessor_account_id();
         let new_user = User {
-            username,
-            wallet_id: wallet_id.to_string(),
+            wallet_id: wallet_id.clone(), 
             subaccount_id,
             preferences: Vec::new(),
         };
-        self.users.insert(&wallet_id, &new_user);
+        self.users.insert(&wallet_id, &new_user); 
         log!("Stored user: {}", wallet_id);
     }
 
@@ -90,21 +101,13 @@ impl Contract {
     pub fn update_preferences(&mut self, prefs: Vec<Preference>) {
         let signer = env::predecessor_account_id();
         let mut user = self.users.get(&signer).expect("User not found");
-        assert_eq!(user.wallet_id, signer.to_string(), "Unauthorized: wallet mismatch");
+        assert_eq!(user.wallet_id, signer, "Unauthorized: wallet mismatch");
         user.preferences.extend(prefs);
         self.users.insert(&signer, &user);
         log!("Updated preferences for user: {}", signer);
     }
 
-    /// A method to retrieve all users stored in the contract.
-    /// This function:
-    /// - Takes no parameters (uses self),
-    /// - Converts the users map to a vector of key-value pairs,
-    /// - Maps the vector to extract only the User values (discarding keys),
-    /// - Returns a Vec<User> containing all user data.
-    pub fn get_all_users(&self) -> Vec<User> {
-        self.users.to_vec().into_iter().map(|(_key, value)| value).collect()
-    }
+    
 }
 
 #[cfg(test)]
@@ -117,7 +120,7 @@ mod tests {
     /// This test:
     /// - Sets up a VM context with accounts(0) as the predecessor,
     /// - Initializes a default contract,
-    /// - Stores a user with username "alice" and subaccount "alice.sub",
+    /// - Stores a user with username "alice" and subaccount accounts(1),
     /// - Retrieves the user by wallet_id (accounts(0)),
     /// - Asserts that the retrieved user’s username, wallet_id, and subaccount_id match the expected values.
     #[test]
@@ -127,18 +130,17 @@ mod tests {
             .build();
         testing_env!(context);
         let mut contract = Contract::default();
-        contract.store_user("alice".to_string(), "alice.sub".to_string());
+        contract.store_user(accounts(1));
         let user = contract.get_user(accounts(0)).unwrap();
-        assert_eq!(user.username, "alice");
-        assert_eq!(user.wallet_id, accounts(0).to_string());
-        assert_eq!(user.subaccount_id, "alice.sub");
+        assert_eq!(user.wallet_id, accounts(0));
+        assert_eq!(user.subaccount_id, accounts(1));
     }
 
     /// A test to verify that updating a user’s preferences works correctly.
     /// This test:
     /// - Sets up a VM context with accounts(0) as the predecessor,
     /// - Initializes a default contract,
-    /// - Stores a user with username "bob" and subaccount "bob.sub",
+    /// - Stores a user with username "bob" and subaccount accounts(1),
     /// - Creates a vector with one Preference and updates the user’s preferences,
     /// - Retrieves the user by wallet_id (accounts(0)),
     /// - Asserts that the user’s preferences vector has one entry and matches the provided preference.
@@ -149,45 +151,21 @@ mod tests {
             .build();
         testing_env!(context);
         let mut contract = Contract::default();
-        contract.store_user("bob".to_string(), "bob.sub".to_string());
+        contract.store_user( accounts(1));
         let prefs = vec![Preference {
             seed_id: "seed1".to_string(),
-            token_id: "token1".to_string(),
-            smart_contract_name: "contract1".to_string(),
+            token_id: accounts(2),
+            smart_contract_name: accounts(3),
             is_active: true,
-            reinvest_to: "Burrow".to_string(),
+            reinvest_to: ReinvestOption::Burrow,
         }];
         contract.update_preferences(prefs.clone());
         let user = contract.get_user(accounts(0)).unwrap();
         assert_eq!(user.preferences.len(), 1);
         assert_eq!(user.preferences[0].seed_id, prefs[0].seed_id);
         assert_eq!(user.preferences[0].is_active, true);
+        assert!(matches!(user.preferences[0].reinvest_to, ReinvestOption::Burrow));
     }
 
-    /// A test to verify that retrieving all users works correctly.
-    /// This test:
-    /// - Sets up a VM context with accounts(0) as the predecessor and stores a user "alice",
-    /// - Changes the context to accounts(1) as the predecessor and stores a user "bob",
-    /// - Retrieves all users from the contract,
-    /// - Asserts that the returned vector contains two users with usernames "alice" and "bob".
-    #[test]
-    fn test_get_all_users() {
-        let context = VMContextBuilder::new()
-            .predecessor_account_id(accounts(0))
-            .build();
-        testing_env!(context);
-        let mut contract = Contract::default();
-        contract.store_user("alice".to_string(), "alice.sub".to_string());
-        
-        let context = VMContextBuilder::new()
-            .predecessor_account_id(accounts(1))
-            .build();
-        testing_env!(context);
-        contract.store_user("bob".to_string(), "bob.sub".to_string());
-
-        let users = contract.get_all_users();
-        assert_eq!(users.len(), 2);
-        assert_eq!(users[0].username, "alice");
-        assert_eq!(users[1].username, "bob");
-    }
+   
 }
