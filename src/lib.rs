@@ -3,8 +3,7 @@ use near_sdk::{env, log, near_bindgen, AccountId};
 use near_sdk::collections::UnorderedMap; 
 use near_sdk::serde::{Deserialize, Serialize};
 
-// Removed schemars::JsonSchema since AccountId doesn’t implement it natively
-// If JSON schema is critical, we’d need a custom implementation or revert to String
+
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -169,3 +168,4 @@ mod tests {
 
    
 }
+
