@@ -119,7 +119,6 @@ mod tests {
         let prefs = vec![Preference {
             seed_id: "seed1".to_string(),
             token_id: "token1".to_string(),
-            smart Margaret: true,
             smart_contract_name: "contract1".to_string(),
             is_active: true,
             reinvest_to: "Burrow".to_string(),
