@@ -13,23 +13,24 @@ pub struct Contract {
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, JsonSchema, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub enum ReinvestOption {
-    Burrow,
-
+    #[schemars(with = "String")] Burrow {
+        seed_id: String,
+        token_id: AccountId,
+    },
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, JsonSchema, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub enum InvestOption {
-    Burrow,
-
+    #[schemars(with = "String")] Burrow {
+        seed_id: String,
+        token_id: AccountId,
+    },
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, JsonSchema, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Preference {
-    pub seed_id: String,
-    #[schemars(with = "String")]
-    pub token_id: AccountId,
     #[schemars(with = "String")]
     pub smart_contract_name: AccountId,
     pub is_active: bool,
@@ -44,7 +45,7 @@ pub struct User {
     pub wallet_id: AccountId,
     #[schemars(with = "String")]
     pub subaccount_id: AccountId,
-    pub preferences: Vec<Preference>,
+    pub preference: Option<Preference>,
 }
 
 impl Default for Contract {
@@ -65,8 +66,8 @@ impl Contract {
             None => {
                 let new_user = User {
                     wallet_id: wallet_id.clone(),
-                    subaccount_id: subaccount_id,
-                    preferences: Vec::new(),
+                    subaccount_id,
+                    preference: None,
                 };
                 self.users.insert(&wallet_id, &new_user);
                 log!("Stored new user: {}", wallet_id);
@@ -78,34 +79,38 @@ impl Contract {
         self.users.get(&wallet_id)
     }
 
-    pub fn update_preferences(&mut self, prefs: Vec<Preference>) {
+    pub fn update_preference(&mut self, preference: Preference) {
         let signer = env::predecessor_account_id();
         let mut user = self.users.get(&signer).expect("User not found");
-        assert_eq!(user.wallet_id, signer.to_string(), "Unauthorized: wallet mismatch");
-        assert!(prefs.len() == 1, "Only one preference can be stored per user");
+        assert_eq!(user.wallet_id, signer, "Unauthorized: wallet mismatch");
 
-        let pref = &prefs[0];
-        assert!(pref.seed_id.len() <= 64, "seed_id must be 64 characters or less");
+        match &preference.invested_in {
+            InvestOption::Burrow { seed_id, .. } => {
+                assert!(seed_id.len() <= 64, "seed_id must be 64 characters or less");
+            }
+        }
+        match &preference.reinvest_to {
+            ReinvestOption::Burrow { seed_id, .. } => {
+                assert!(seed_id.len() <= 64, "seed_id must be 64 characters or less");
+            }
+        }
 
-        user.preferences = prefs;
-
+        user.preference = Some(preference);
         self.users.insert(&signer, &user);
-        log!("Updated preferences for user: {}", signer);
+        log!("Updated preference for user: {}", signer);
     }
 
-    pub fn delete_preference(&mut self, seed_id: String) {
+    pub fn delete_preference(&mut self) {
         let signer = env::predecessor_account_id();
         let mut user = self.users.get(&signer).expect("User not found");
-        assert_eq!(user.wallet_id, signer.to_string(), "Unauthorized: wallet mismatch");
+        assert_eq!(user.wallet_id, signer, "Unauthorized: wallet mismatch");
 
-        let initial_len = user.preferences.len();
-        user.preferences.retain(|pref| pref.seed_id != seed_id);
-
-        if user.preferences.len() < initial_len {
+        if user.preference.is_some() {
+            user.preference = None;
             self.users.insert(&signer, &user);
-            log!("Deleted preference with seed_id: {} for user: {}", seed_id, signer);
+            log!("Deleted preference for user: {}", signer);
         } else {
-            log!("No preference found with seed_id: {} for user: {}", seed_id, signer);
+            log!("No preference found for user: {}", signer);
         }
     }
 }
@@ -123,28 +128,38 @@ mod tests {
         let mut contract = Contract::default();
         contract.store_user(accounts(1));
         let user = contract.get_user(accounts(0)).unwrap();
-        assert_eq!(user.wallet_id, accounts(0).to_string());
-        assert_eq!(user.subaccount_id, accounts(1).to_string());
+        assert_eq!(user.wallet_id, accounts(0));
+        assert_eq!(user.subaccount_id, accounts(1));
+        assert!(user.preference.is_none());
     }
 
     #[test]
-    fn test_update_preferences() {
+    fn test_update_preference() {
         let context = VMContextBuilder::new().predecessor_account_id(accounts(0)).build();
         testing_env!(context);
         let mut contract = Contract::default();
         contract.store_user(accounts(1));
-        let prefs = vec![Preference {
-            seed_id: "seed1".to_string(),
-            token_id: "token1".to_string(),
-            smart_contract_name: "contract1".to_string(),
+        let preference = Preference {
+            smart_contract_name: accounts(2),
             is_active: true,
-            reinvest_to: "Burrow".to_string(),
-        }];
-        contract.update_preferences(prefs.clone());
+            invested_in: InvestOption::Burrow {
+                seed_id: "seed1".to_string(),
+                token_id: accounts(3),
+            },
+            reinvest_to: ReinvestOption::Burrow {
+                seed_id: "seed1".to_string(),
+                token_id: accounts(3),
+            },
+        };
+        contract.update_preference(preference.clone());
         let user = contract.get_user(accounts(0)).unwrap();
-        assert_eq!(user.preferences.len(), 1);
-        assert_eq!(user.preferences[0].seed_id, prefs[0].seed_id);
-        assert_eq!(user.preferences[0].is_active, true);
+        let stored_pref = user.preference.unwrap();
+        assert_eq!(stored_pref.is_active, preference.is_active);
+        match stored_pref.invested_in {
+            InvestOption::Burrow { seed_id, .. } => {
+                assert_eq!(seed_id, "seed1");
+            }
+        }
     }
 
     #[test]
@@ -153,21 +168,22 @@ mod tests {
         testing_env!(context);
         let mut contract = Contract::default();
         contract.store_user(accounts(1));
-        let prefs = vec![
-            Preference {
+        let preference = Preference {
+            smart_contract_name: accounts(2),
+            is_active: true,
+            invested_in: InvestOption::Burrow {
                 seed_id: "seed1".to_string(),
-                token_id: "token1".to_string(),
-                smart_contract_name: "contract1".to_string(),
-                is_active: true,
-                reinvest_to: "Burrow".to_string(),
+                token_id: accounts(3),
             },
-           
-        ];
-        contract.update_preferences(prefs);
-        contract.delete_preference("seed1".to_string());
+            reinvest_to: ReinvestOption::Burrow {
+                seed_id: "seed1".to_string(),
+                token_id: accounts(3),
+            },
+        };
+        contract.update_preference(preference);
+        contract.delete_preference();
         let user = contract.get_user(accounts(0)).unwrap();
-        assert_eq!(user.preferences.len(), 1);
-        assert_eq!(user.preferences[0].seed_id, "seed2");
+        assert!(user.preference.is_none());
     }
 
     #[test]
@@ -176,25 +192,9 @@ mod tests {
         testing_env!(context);
         let mut contract = Contract::default();
         contract.store_user(accounts(1));
-        let initial_user = contract.get_user(accounts(0)).unwrap();
-        contract.delete_preference("nonexistent_seed".to_string());
+        contract.delete_preference();
         let user = contract.get_user(accounts(0)).unwrap();
-        assert_eq!(user.preferences.len(), initial_user.preferences.len());
-    }
-
-    #[test]
-    fn test_get_all_users() {
-        let context = VMContextBuilder::new().predecessor_account_id(accounts(0)).build();
-        testing_env!(context);
-        let mut contract = Contract::default();
-        contract.store_user(accounts(0));
-
-        let context = VMContextBuilder::new().predecessor_account_id(accounts(1)).build();
-        testing_env!(context);
-        contract.store_user(accounts(1));
-
-        let users = contract.get_all_users();
-        assert_eq!(users.len(), 2);
+        assert!(user.preference.is_none());
     }
 
     #[test]
@@ -207,3 +207,7 @@ mod tests {
         contract.store_user(accounts(1));
     }
 }
+
+
+
+
